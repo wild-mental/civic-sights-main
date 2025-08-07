@@ -5,12 +5,17 @@ import com.makersworld.civic_sights_main.model.NewsArticle;
 import com.makersworld.civic_sights_main.repository.NewsArticleRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -18,8 +23,11 @@ public class NewsArticleService {
     
     private final NewsArticleRepository newsArticleRepository;
     
+    // 페이지네이션 상수
+    private static final int DEFAULT_PAGE_SIZE = 25;
+    
     // 임시 데이터 (JPA 연결이 성공하면 제거될 예정)
-    private List<NewsArticle> sampleArticles;
+    private List<NewsArticle> sampleArticles;   
     
     @PostConstruct
     private void initializeSampleData() {
@@ -64,64 +72,140 @@ public class NewsArticleService {
     }
     
     /**
-     * 전체 뉴스 리스트 조회
+     * 샘플 데이터를 사용한 페이지네이션 헬퍼 메서드
      */
-    public List<NewsArticle> getAllArticles() {
+    private Page<NewsArticle> createPageFromList(List<NewsArticle> articles, Pageable pageable) {
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), articles.size());
+        
+        if (start > articles.size()) {
+            return new PageImpl<>(new ArrayList<>(), pageable, articles.size());
+        }
+        
+        List<NewsArticle> pageContent = articles.subList(start, end);
+        return new PageImpl<>(pageContent, pageable, articles.size());
+    }
+    
+    /**
+     * 기본 Pageable 생성 (페이지당 25건)
+     */
+    private Pageable createDefaultPageable(int page) {
+        return PageRequest.of(page, DEFAULT_PAGE_SIZE);
+    }
+    
+    /**
+     * 전체 뉴스 리스트 조회 (페이지네이션)
+     */
+    public Page<NewsArticle> getAllArticles(Pageable pageable) {
         try {
             // JPA Repository 사용 시도
-            return newsArticleRepository.findAllByOrderByCreateDateDesc();
+            return newsArticleRepository.findAllByOrderByCreateDateDesc(pageable);
         } catch (Exception e) {
             // JPA 연결 실패 시 샘플 데이터 반환
-            return new ArrayList<>(sampleArticles);
+            return createPageFromList(new ArrayList<>(sampleArticles), pageable);
         }
     }
     
     /**
-     * 유료 뉴스 리스트 조회
+     * 전체 뉴스 리스트 조회 (기본 페이지네이션 - 페이지당 25건)
      */
-    public List<NewsArticle> getPremiumArticles() {
+    public Page<NewsArticle> getAllArticles(int page) {
+        return getAllArticles(createDefaultPageable(page));
+    }
+    
+    /**
+     * 유료 뉴스 리스트 조회 (페이지네이션)
+     */
+    public Page<NewsArticle> getPremiumArticles(Pageable pageable) {
         try {
-            return newsArticleRepository.findByIsPremiumTrueOrderByCreateDateDesc();
+            return newsArticleRepository.findByIsPremiumTrueOrderByCreateDateDesc(pageable);
         } catch (Exception e) {
-            return sampleArticles.stream()
+            List<NewsArticle> premiumArticles = sampleArticles.stream()
                     .filter(NewsArticle::getIsPremium)
-                    .toList();
+                    .collect(Collectors.toList());
+            return createPageFromList(premiumArticles, pageable);
         }
     }
     
     /**
-     * 무료 뉴스 리스트 조회
+     * 유료 뉴스 리스트 조회 (기본 페이지네이션)
      */
-    public List<NewsArticle> getFreeArticles() {
+    public Page<NewsArticle> getPremiumArticles(int page) {
+        return getPremiumArticles(createDefaultPageable(page));
+    }
+    
+    /**
+     * 무료 뉴스 리스트 조회 (페이지네이션)
+     */
+    public Page<NewsArticle> getFreeArticles(Pageable pageable) {
         try {
-            return newsArticleRepository.findByIsPremiumFalseOrderByCreateDateDesc();
+            return newsArticleRepository.findByIsPremiumFalseOrderByCreateDateDesc(pageable);
         } catch (Exception e) {
-            return sampleArticles.stream()
+            List<NewsArticle> freeArticles = sampleArticles.stream()
                     .filter(article -> !article.getIsPremium())
-                    .toList();
+                    .collect(Collectors.toList());
+            return createPageFromList(freeArticles, pageable);
         }
     }
     
     /**
-     * 카테고리별 뉴스 리스트 조회
+     * 무료 뉴스 리스트 조회 (기본 페이지네이션)
      */
-    public List<NewsArticle> getArticlesByCategory(Category category) {
+    public Page<NewsArticle> getFreeArticles(int page) {
+        return getFreeArticles(createDefaultPageable(page));
+    }
+    
+    /**
+     * 카테고리별 뉴스 리스트 조회 (페이지네이션)
+     */
+    public Page<NewsArticle> getArticlesByCategory(Category category, Pageable pageable) {
         try {
-            return newsArticleRepository.findByCategoryOrderByCreateDateDesc(category);
+            return newsArticleRepository.findByCategoryOrderByCreateDateDesc(category, pageable);
         } catch (Exception e) {
-            return sampleArticles.stream()
+            List<NewsArticle> categoryArticles = sampleArticles.stream()
                     .filter(article -> article.getCategory() == category)
-                    .toList();
+                    .collect(Collectors.toList());
+            return createPageFromList(categoryArticles, pageable);
         }
+    }
+    
+    /**
+     * 카테고리별 뉴스 리스트 조회 (기본 페이지네이션)
+     */
+    public Page<NewsArticle> getArticlesByCategory(Category category, int page) {
+        return getArticlesByCategory(category, createDefaultPageable(page));
     }
     
     /**
      * 개별 뉴스 상세 조회
      */
+    public Optional<NewsArticle> getFreeArticleById(Long id) {
+        try {
+            return newsArticleRepository.findByIdAndIsPremiumFalse(id);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+    
+    /**
+     * 유료 뉴스 상세 조회
+     */
+    public Optional<NewsArticle> getPremiumArticleById(Long id) {
+        try {
+            return newsArticleRepository.findByIdAndIsPremiumTrue(id);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+    
+    /**
+     * 개별 뉴스 상세 조회 (모든 뉴스 - 무료/유료 구분 없음)
+     */
     public Optional<NewsArticle> getArticleById(Long id) {
         try {
             return newsArticleRepository.findById(id);
         } catch (Exception e) {
+            // JPA 연결 실패 시 샘플 데이터에서 검색
             return sampleArticles.stream()
                     .filter(article -> article.getId().equals(id))
                     .findFirst();
