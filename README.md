@@ -4,12 +4,12 @@ Spring Boot 기반의 뉴스 기사 관리 REST API 서비스입니다.
 
 ## 📋 프로젝트 개요
 
-시민 참여, 기본소득, 메가트렌드 등의 주제를 다루는 뉴스 기사를 관리하는 백엔드 API 서비스입니다. Spring Boot 3.5.3과 JPA/Hibernate를 사용하여 3-tier 아키텍처로 구현되었습니다.
+시민 참여, 기본소득, 메가트렌드 등의 주제를 다루는 뉴스 기사를 관리하는 백엔드 API 서비스입니다. Spring Boot 3.5.4와 JPA/Hibernate를 사용하여 3-tier 아키텍처로 구현되었습니다.
 
 ## 🛠 기술 스택
 
 ### Backend
-- **Framework**: Spring Boot 3.5.3
+- **Framework**: Spring Boot 3.5.4
 - **Language**: Java 17
 - **Build Tool**: Gradle
 - **ORM**: JPA/Hibernate 6.6.18
@@ -104,6 +104,9 @@ cd civic-sights-main
 ```bash
 curl http://localhost:8080/api/articles/health
 # Response: "News Article API is running!"
+
+# (선택) 게이트웨이 전용 모드 운용 시, 게이트웨이 내부 헤더를 흉내 내어 호출
+# curl -H "X-Gateway-Internal: <YOUR_GATEWAY_TOKEN>" http://localhost:8080/api/articles
 ```
 
 ## 📡 API 엔드포인트
@@ -116,10 +119,10 @@ http://localhost:8080/api/articles
 ### 뉴스 리스트 조회
 | Method | Endpoint | 설명 | 페이지네이션 |
 |--------|----------|------|-------------|
-| GET | `/api/articles` | 전체 뉴스 리스트 | ❌ |
-| GET | `/api/articles/premium` | 유료 뉴스 리스트 | ❌ |
-| GET | `/api/articles/free` | 무료 뉴스 리스트 | ❌ |
-| GET | `/api/articles/category/{category}` | 카테고리별 뉴스 리스트 | ✅ |
+| GET | `/api/articles` | 전체 뉴스 리스트 | ✅ (page,size) |
+| GET | `/api/articles/premium` | 유료 뉴스 리스트 | ✅ (page,size) |
+| GET | `/api/articles/free` | 무료 뉴스 리스트 | ✅ (page,size) |
+| GET | `/api/articles/category/{category}` | 카테고리별 뉴스 리스트 | ✅ (page,size) |
 
 #### 지원되는 카테고리 형태
 - `civic-engagement` (권장)
@@ -310,8 +313,8 @@ docker exec mysql-civic mysql -u root -proot -e "USE civic_sights; SHOW TABLES;"
 - URL 파라미터: `?page=0&size=25`
 
 ### 4. 실제 이미지 URL 적용
-- Picsum Photos를 활용한 실제 호출 가능한 placeholder 이미지
-- 각 기사별 고유한 랜덤 이미지 적용
+- Picsum Photos를 활용한 실제 호출 가능한 placeholder 이미지 적용
+- DB 샘플 데이터의 `main_img`를 호출 가능한 URL로 교체됨
 
 ### 5. Category Enum 확장
 - `fromValue(String)` 정적 메서드 추가
@@ -320,7 +323,7 @@ docker exec mysql-civic mysql -u root -proot -e "USE civic_sights; SHOW TABLES;"
 
 ## 🔧 기술적 개선사항
 
-### 자동 타입 변환 시스템
+### 자동 타입 변환 시스템 (하이픈 카테고리 → Enum)
 ```java
 // URL: /api/articles/category/civic-engagement
 // 자동 변환: "civic-engagement" → Category.CIVIC_ENGAGEMENT
@@ -350,7 +353,7 @@ public ResponseEntity<Page<NewsArticle>> getArticlesByCategory(
 - [ ] 댓글 시스템
 
 ### 2. 보안 강화
-- [ ] 인증/인가 시스템
+- [x] 게이트웨이 기반 인증/인가 시스템
 - [ ] API Rate Limiting
 - [ ] 입력 데이터 검증 강화
 

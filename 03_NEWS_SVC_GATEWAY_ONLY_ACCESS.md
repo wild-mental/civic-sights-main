@@ -101,38 +101,64 @@ curl -i http://localhost:8080/api/articles
 ```
 
 ### 4-3. 게이트웨이 역할로 접근 (성공)
-게이트웨이가 붙이는 전용 헤더를 흉내 내어 호출합니다.
+게이트웨이가 붙이는 전용 헤더를 흉내 내어 호출합니다. 토큰을 환경변수로 설정하면 편리합니다. 값이 없으면 서비스/게이트웨이 모두 기본값 `civic-insights-gateway-v1`를 사용합니다.
 
 ```bash
+# 기본값 사용(설정 안 하면 civic-insights-gateway-v1)
+export GATEWAY_SECRET_TOKEN=${GATEWAY_SECRET_TOKEN:-civic-insights-gateway-v1}
+
 curl -i http://localhost:8080/api/articles \
-  -H "X-Gateway-Internal: CHANGE_ME_SECRET"
+  -H "X-Gateway-Internal: ${GATEWAY_SECRET_TOKEN}"
 # 200 OK + 기사 리스트
 ```
 
-### 4-4. 유료 기사 상세 보기의 인증 정책
-`SecurityConfig`에는 유료 상세보기만 인증이 필요합니다.
+### 4-4. 유료 기사 상세 보기의 인증 정책(게이트웨이 위임형)
+서비스 내부 Spring Security는 완전히 `permitAll()`로 두고, 접근 통제는 아래와 같이 분리합니다.
 
+- 1) 게이트웨이: JWT 검증 + `X-User-Roles` 헤더 추가
+- 2) 서비스 컨트롤러: 프리미엄 상세(`/api/articles/premium/{id}`) 요청 시 `X-User-Roles`에 `PAID_USER` 포함 여부 검사(미포함 403)
+
+참고: 컨트롤러 구현 예시(요약)
 ```java
-.authorizeHttpRequests(auth -> auth
-    .requestMatchers("/api/articles/premium/{id:[0-9]+}").authenticated()
-    .requestMatchers("/api/articles/premium").permitAll()
-    .anyRequest().permitAll()
-);
+@GetMapping("/premium/{id}")
+public ResponseEntity<NewsArticle> getPremiumArticleById(@PathVariable("id") Long id,
+        @RequestHeader(value = "X-User-Roles", required = false) String rolesHeader) {
+    boolean hasPaidRole = rolesHeader != null &&
+        java.util.Arrays.stream(rolesHeader.split(","))
+            .map(String::trim)
+            .anyMatch(r -> r.equalsIgnoreCase("PAID_USER") || r.equalsIgnoreCase("ROLE_PAID_USER"));
+    if (!hasPaidRole) return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+    return newsArticleService.getPremiumArticleById(id)
+        .map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+}
 ```
 
-- 리스트(`/api/articles/premium`)는 공개
-- 상세(`/api/articles/premium/{id}`)는 인증(게이트웨이 또는 추가 보안) 필요
-
-호출 테스트:
+호출 테스트(프리미엄 상세 - 로컬 빠른 시뮬레이션):
 ```bash
-# (실패) 헤더 없이
+# (실패) 헤더 없이 → GatewayOnlyFilter 차단
 curl -i http://localhost:8080/api/articles/premium/1
-# 403 Forbidden (GatewayOnlyFilter)
 
-# (성공) 게이트웨이 헤더 포함
+# (성공) 게이트웨이 헤더 + 유료 권한 헤더 시뮬레이션
+export GATEWAY_SECRET_TOKEN=${GATEWAY_SECRET_TOKEN:-civic-insights-gateway-v1}
 curl -i http://localhost:8080/api/articles/premium/1 \
-  -H "X-Gateway-Internal: CHANGE_ME_SECRET"
-# 200 OK + 해당 유료 기사
+  -H "X-Gateway-Internal: ${GATEWAY_SECRET_TOKEN}" \
+  -H "X-User-Roles: PAID_USER"
+# 200 OK + 해당 유료 기사 (컨트롤러가 X-User-Roles=PAID_USER 확인)
+```
+
+> 실제 운영 흐름에서는 반드시 게이트웨이(8000) 경유로 호출하세요. 게이트웨이가 JWT를 검증하고 `X-User-Roles`를 부여합니다. 위 시뮬레이션은 로컬 개발 편의용입니다.
+
+### 4-5. 게이트웨이 경유 테스트(권장)
+
+게이트웨이를 통해 호출하면 별도 헤더를 수동으로 넣을 필요가 없습니다.
+
+```bash
+# 공개 엔드포인트(리스트)
+curl -i http://localhost:8000/api/news/articles/premium
+
+# 유료 상세(토큰 필요): Authorization에 JWT를 넣으면 게이트웨이가 검증하고 X-User-Roles를 전달
+curl -i http://localhost:8000/api/news/articles/premium/1 \
+  -H "Authorization: Bearer $ACCESS_TOKEN_WITH_PAID_USER"
 ```
 
 ---
@@ -164,7 +190,7 @@ curl -s "http://localhost:8080/api/articles/category/civic-engagement?page=0&siz
 개별 상세 조회:
 - GET `/api/articles/{id}` (전체)
 - GET `/api/articles/free/{id}` (무료)
-- GET `/api/articles/premium/{id}` (유료, 인증 필요)
+- GET `/api/articles/premium/{id}` (유료, 게이트웨이 위임형 권한 검사: `PAID_USER` 필요)
 
 CRUD:
 - POST `/api/articles`

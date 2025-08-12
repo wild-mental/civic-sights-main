@@ -89,7 +89,18 @@ public class NewsArticleController {
      * GET /api/articles/premium/{id}
      */
     @GetMapping("/premium/{id}")
-    public ResponseEntity<NewsArticle> getPremiumArticleById(@PathVariable("id") Long id) {
+    public ResponseEntity<NewsArticle> getPremiumArticleById(@PathVariable("id") Long id,
+                                                             @RequestHeader(value = "X-User-Roles", required = false) String rolesHeader) {
+        // 게이트웨이가 부여한 역할 헤더를 검사하여 PAID_USER 인지 확인
+        boolean hasPaidRole = rolesHeader != null &&
+                java.util.Arrays.stream(rolesHeader.split(","))
+                        .map(String::trim)
+                        .anyMatch(r -> r.equalsIgnoreCase("PAID_USER") || r.equalsIgnoreCase("ROLE_PAID_USER"));
+
+        if (!hasPaidRole) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         Optional<NewsArticle> article = newsArticleService.getPremiumArticleById(id);
         return article.map(ResponseEntity::ok)
                      .orElse(ResponseEntity.notFound().build());

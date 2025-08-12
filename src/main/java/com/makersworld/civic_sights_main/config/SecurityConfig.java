@@ -23,11 +23,9 @@ public class SecurityConfig {
             .httpBasic(httpBasic -> httpBasic.disable())
             .formLogin(formLogin -> formLogin.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // 완전한 게이트웨이 위임형: 접근 통제는 GatewayOnlyFilter + 게이트웨이(JWT 검증) + 컨트롤러 단 헤더검증에서 수행
             .authorizeHttpRequests(auth -> auth
-                // Gateway가 검증하므로, 서비스 내에서는 헤더 존재 여부만 체크하거나 모두 허용
-                .requestMatchers("/api/articles/premium/{id:[0-9]+}").authenticated() // 프리미엄 뉴스 상세 콘텐츠만 인증 필수
-                .requestMatchers("/api/articles/premium").permitAll() // 프리미엄 뉴스 리스트는 인증 없이 허용
-                .anyRequest().permitAll() // 그 외는 모두 허용
+                .anyRequest().permitAll()
             );
         return http.build();
     }
